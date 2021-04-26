@@ -1,22 +1,14 @@
-import React from 'react';
-import './App.css';
-import * as tf from '@tensorflow/tfjs';
-import * as tfvis from '@tensorflow/tfjs-vis';
+import React from "react";
+import "./App.css";
+import * as tfvis from "@tensorflow/tfjs-vis";
+import HousePricesAi from "./pages/HousePricesAi";
 
-const data = [
-  { index: 0, value: 50 },
-  { index: 1, value: 100 },
-  { index: 2, value: 150 },
-];
-
-function App() {
-  const surface = tfvis.visor().surface({ name: 'Barchart', tab: 'Charts' });
-
+const App = () => {
   return (
     <div className="App">
-
+      <HousePricesAi />
     </div>
   );
-}
+};
 
 export default App;
