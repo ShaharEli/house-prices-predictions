@@ -1,5 +1,5 @@
 import * as tf from "@tensorflow/tfjs";
-import { TensorContainer } from "@tensorflow/tfjs";
+import { Tensor, TensorContainer } from "@tensorflow/tfjs";
 import { IPlotProps, IPoint } from "../types";
 import * as tfvis from "@tensorflow/tfjs-vis";
 import { HOUSE_LABEL_NAME } from "./consts.utils";
@@ -35,4 +35,29 @@ export const plot = (
 ): void => {
   const data = { values: points, series };
   tfvis.render.scatterplot({ name }, data, { xLabel, yLabel });
+};
+interface INormalizedTensors {
+  tensors: Tensor;
+  max: number;
+  min: number;
+}
+const getNormalizedTensors = (
+  preNormalizedTensors: Tensor,
+  prevMax: number,
+  prevMin: number
+): INormalizedTensors => {
+  let max, min;
+  if (prevMax !== undefined && prevMin !== undefined) {
+    max = prevMax;
+    min = prevMin;
+  } else {
+    max = preNormalizedTensors.max().dataSync()[0];
+    min = preNormalizedTensors.min().dataSync()[0];
+  }
+  const tensors = preNormalizedTensors.sub(min).div(max - min);
+  return {
+    tensors,
+    max,
+    min,
+  };
 };
