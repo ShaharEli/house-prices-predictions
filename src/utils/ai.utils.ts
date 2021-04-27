@@ -41,10 +41,10 @@ interface INormalizedTensors {
   max: number;
   min: number;
 }
-const getNormalizedTensors = (
+export const getNormalizedTensors = (
   preNormalizedTensors: Tensor,
-  prevMax: number,
-  prevMin: number
+  prevMax?: number,
+  prevMin?: number
 ): INormalizedTensors => {
   let max, min;
   if (prevMax !== undefined && prevMin !== undefined) {

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import {
+  getNormalizedTensors,
   getPoints,
   HOUSES_CSV_URL,
   HOUSE_LABEL_NAME,
@@ -34,6 +35,17 @@ const HousePricesAi = () => {
         points.map((p) => p.y),
         [points.length, 1]
       );
+
+      const {
+        tensors: normalizedFeatureTensors,
+        max: featureTensorsMax,
+        min: featureTensorsMin,
+      } = getNormalizedTensors(featureTensors);
+      const {
+        tensors: normalizedLabelTensors,
+        max: labelTensorsMax,
+        min: labelTensorsMin,
+      } = getNormalizedTensors(labelsTensors);
     })();
   });
   return <div></div>;
