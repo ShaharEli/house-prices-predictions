@@ -1,9 +1,17 @@
 import * as tf from "@tensorflow/tfjs";
-import { Tensor, TensorContainer } from "@tensorflow/tfjs";
-import { IPlotProps, IPoint } from "../types";
+import { Tensor, Tensor, TensorContainer } from "@tensorflow/tfjs";
+import {
+  ILayer,
+  INormalizedTensors,
+  IPlotProps,
+  IPoint,
+  SetStatus,
+} from "../types";
 import * as tfvis from "@tensorflow/tfjs-vis";
 import { HOUSE_LABEL_NAME } from "./consts.utils";
-export const loadData = async (dataUrl: string) => {
+export const loadData = async (
+  dataUrl: string
+): Promise<tf.data.CSVDataset> => {
   await tf.ready();
   return tf.data.csv(dataUrl);
 };
@@ -36,11 +44,6 @@ export const plot = (
   const data = { values: points, series };
   tfvis.render.scatterplot({ name }, data, { xLabel, yLabel });
 };
-interface INormalizedTensors {
-  tensors: Tensor;
-  max: number;
-  min: number;
-}
 export const getNormalizedTensors = (
   preNormalizedTensors: Tensor,
   prevMax?: number,
@@ -61,3 +64,58 @@ export const getNormalizedTensors = (
     min,
   };
 };
+
+export const createModel = (
+  setStatus: SetStatus,
+  showVisual?: boolean
+): tf.Sequential => {
+  setStatus("preparing layers");
+
+  const layers: ILayer[] = [
+    {
+      activation: "sigmoid",
+      units: 8,
+      useBias: true,
+      inputDim: 1,
+    },
+  ];
+  const model = tf.sequential({
+    //   @ts-ignore
+    layers: layers.map((layer) => tf.layers.dense(layer)),
+  });
+  setStatus("preparing optimizer");
+
+  const optimizer = tf.train.adam();
+  setStatus("compiling model");
+
+  model.compile({
+    optimizer,
+    loss: "meanSquaredError",
+  });
+  setStatus("finished compiling model");
+  if (showVisual) {
+    // Showing model
+    tfvis.show.modelSummary({ name: "model" }, model);
+    // Showing the first layer
+    tfvis.show.layer({ name: "model" }, model.getLayer(undefined, 0));
+  }
+
+  return model;
+};
+
+interface ITrainModelOption {
+  metrics: string[];
+  name: string;
+  batchSize: number;
+  epochs: number;
+  validationSplit: number;
+}
+
+const trainModel = (
+  model: tf.Sequential,
+  featureTensors: Tensor,
+  labelsTensors: Tensor,
+  opts: ITrainModelOption = {},
+  setStatus: SetStatus,
+  withVis: boolean
+) => {};
