@@ -22,7 +22,22 @@ export interface ILayer {
   activation: ActivationSerialization;
   units: number;
   useBias: boolean;
-  inputDim: number;
+  inputDim?: number;
 }
 
 export type SetStatus = (arg: string) => void;
+
+export interface ICallbacks {
+  onEpochEnd: () => void;
+  onBatchEnd: () => void;
+}
+export interface IMetaData {
+  featureTensorsMax: number;
+  featureTensorsMin: number;
+  labelTensorsMax: number;
+  labelTensorsMin: number;
+  trainingFeatures: Tensor;
+  testingFeatures: Tensor;
+  trainingLabels: Tensor;
+  testingLabels: Tensor;
+}

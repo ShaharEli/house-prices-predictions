@@ -1,5 +1,5 @@
 import * as tf from "@tensorflow/tfjs";
-import { Tensor, Tensor, TensorContainer } from "@tensorflow/tfjs";
+import { Tensor, History, TensorContainer } from "@tensorflow/tfjs";
 import {
   ILayer,
   INormalizedTensors,
@@ -37,10 +37,16 @@ export const getPoints = async (
 };
 
 export const plot = (
-  points: [IPoint[]] | [IPoint[], IPoint[]],
+  points: [IPoint[]],
   series: string[],
-  { xLabel, yLabel, name }: IPlotProps
+  { xLabel, yLabel, name }: IPlotProps,
+  predictedPoints?: IPoint[]
 ): void => {
+  if (predictedPoints) {
+    //   @ts-ignore
+    points.push(predictedPoints);
+    series.push("predicted");
+  }
   const data = { values: points, series };
   tfvis.render.scatterplot({ name }, data, { xLabel, yLabel });
 };
@@ -78,6 +84,11 @@ export const createModel = (
       useBias: true,
       inputDim: 1,
     },
+    {
+      activation: "sigmoid",
+      units: 1,
+      useBias: true,
+    },
   ];
   const model = tf.sequential({
     //   @ts-ignore
@@ -102,20 +113,147 @@ export const createModel = (
 
   return model;
 };
+const denormalise = (tensor: any, max: number, min: number): Tensor =>
+  tensor.mul(max - min).add(min);
+
+export const predict = (
+  input: string,
+  featureMax: number,
+  featureMin: number,
+  labelMin: number,
+  labelMax: number,
+  model: tf.Sequential
+): number | boolean => {
+  const parsedInput = parseInt(input);
+  if (isNaN(parsedInput)) {
+    return false;
+  } else {
+    return tf.tidy(() => {
+      const inputTensor = tf.tensor1d([parsedInput]);
+      const normalisedInput = getNormalizedTensors(
+        inputTensor,
+        featureMin,
+        featureMax
+      );
+      const normalisedOutputTensor = model.predict(normalisedInput.tensors);
+      const outputTensor = denormalise(
+        normalisedOutputTensor,
+        labelMax,
+        labelMin
+      );
+      const outputValue = outputTensor.dataSync()[0];
+      return outputValue;
+    });
+  }
+};
+
+export const plotPredictionLine = (
+  model: tf.Sequential,
+  featureMax: number,
+  featureMin: number,
+  labelMin: number,
+  labelMax: number,
+  points: IPoint[],
+  selectedFeature: string,
+  { xLabel, yLabel, name }: IPlotProps
+) => {
+  const [xs, ys] = tf.tidy(() => {
+    const normalisedXs = tf.linspace(0, 1, 100);
+    const normalisedYs = model.predict(normalisedXs.reshape([100, 1]));
+
+    const xs = denormalise(normalisedXs, featureMax, featureMin);
+    const ys = denormalise(normalisedYs, labelMax, labelMin);
+
+    return [xs.dataSync(), ys.dataSync()];
+  });
+
+  const predictedPoints: IPoint[] = Array.from(xs).map((val, i) => {
+    return { x: val, y: ys[i] };
+  });
+  console.log(predictedPoints);
+
+  plot(
+    [points],
+    [selectedFeature],
+    {
+      xLabel,
+      yLabel,
+      name,
+    },
+    predictedPoints
+  );
+};
 
 interface ITrainModelOption {
-  metrics: string[];
+  metrics?: string[];
   name: string;
-  batchSize: number;
-  epochs: number;
-  validationSplit: number;
+  batchSize?: number;
+  epochs?: number;
+  validationSplit?: number;
+  shuffle?: boolean;
 }
 
-const trainModel = (
+export const testModelCb = (
+  model: tf.Sequential,
+  testingFeatures: Tensor,
+  testingLabels: Tensor
+) => {
+  const evaluation = model.evaluate(testingFeatures, testingLabels);
+  //   @ts-ignore
+  return evaluation.dataSync();
+};
+
+export const trainModelCb = (
   model: tf.Sequential,
   featureTensors: Tensor,
   labelsTensors: Tensor,
-  opts: ITrainModelOption = {},
+  opts: ITrainModelOption,
   setStatus: SetStatus,
-  withVis: boolean
-) => {};
+  featureMax: number,
+  featureMin: number,
+  labelMin: number,
+  labelMax: number,
+  points: IPoint[],
+  selectedFeature: string,
+  { xLabel, yLabel, name }: IPlotProps
+): Promise<History> => {
+  const metrics = opts.metrics || ["loss"];
+
+  const container = {
+    name: opts.name,
+  };
+  setStatus("creating callbacks");
+  const callbacks = tfvis.show.fitCallbacks(container, metrics);
+  console.log("featureMax", featureMax);
+  console.log("featureMin", featureMin);
+  console.log("labelMin", labelMin);
+  console.log("labelMax", labelMax);
+
+  const trainingOpts = {
+    batchSize: opts.batchSize || 50,
+    epochs: opts.epochs || 50,
+    validationSplit: opts.validationSplit || null,
+    callbacks: {
+      //   onEpochEnd: callbacks.onEpochEnd,
+      //   onBatchEnd: callbacks.onBatchEnd,
+      onEpochBegin: () => {
+        plotPredictionLine(
+          model,
+          featureMax,
+          featureMin,
+          labelMin,
+          labelMax,
+          points,
+          selectedFeature,
+          { xLabel, yLabel, name }
+        );
+        const layer = model.getLayer(undefined, 0);
+        tfvis.show.layer({ name: "Layer 1" }, layer);
+      },
+    },
+    shuffle: opts.shuffle || true,
+  };
+  setStatus("training");
+  //   @ts-ignore
+  return model.fit(featureTensors, labelsTensors, trainingOpts);
+};
