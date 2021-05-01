@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import * as tfvis from "@tensorflow/tfjs-vis";
 import {
   createModel,
   getNormalizedTensors,
@@ -10,6 +11,7 @@ import {
   loadModel,
   modelStatusEnum,
   plot,
+  plotPredictionLine,
   predict,
   saveModel,
   testModelCb,
@@ -33,79 +35,108 @@ const HousePricesAi = () => {
   const [predictedVal, setPredictedVal] = useState<string | number>("");
   const [testVal, setTestVal] = useState<string>("");
 
-  const prepareData = useCallback(async () => {
-    if (!data) return;
-    setStatus("creating points");
-    points = await getPoints(selectedFeature, data); //TODO: replace later to dynamic
-    plot([points], [selectedFeature], {
-      xLabel: selectedFeature,
-      yLabel: HOUSE_LABEL_NAME,
-      name: `${selectedFeature} vs price`,
-    });
-    setStatus("creating tensors");
-    const featureTensors = tf.tensor2d(
-      points.map((p) => p.x),
-      [points.length, 1]
-    );
-    const labelsTensors = tf.tensor2d(
-      points.map((p) => p.y),
-      [points.length, 1]
-    );
-    setStatus("normalizing tensors");
-    const {
-      tensors: normalizedFeatureTensors,
-      max: featureTensorsMax,
-      min: featureTensorsMin,
-    } = getNormalizedTensors(featureTensors);
-    const {
-      tensors: normalizedLabelTensors,
-      max: labelTensorsMax,
-      min: labelTensorsMin,
-    } = getNormalizedTensors(labelsTensors);
-    const eightyPercentOfThePoints = Math.floor(points.length * 0.8);
-    const twentyPercentOfThePoints = points.length - eightyPercentOfThePoints;
-    const arrToSplitBy = [eightyPercentOfThePoints, twentyPercentOfThePoints];
-    setStatus("splitting tensors to train and test");
-    const [trainingFeatures, testingFeatures] = tf.split(
-      normalizedFeatureTensors,
-      arrToSplitBy
-    );
-    const [trainingLabels, testingLabels] = tf.split(
-      normalizedLabelTensors,
-      arrToSplitBy
-    );
-    if (model) {
-      setStatus("data created");
-      setCurrStatus(3);
-      return null;
-    }
-    setStatus("creating model");
-    const newModel = createModel(setStatus, true);
-    setModel(newModel);
-    setCurrStatus(1);
-    setMetaData({
-      trainingLabels,
-      testingLabels,
-      trainingFeatures,
-      testingFeatures,
-      labelTensorsMax,
-      labelTensorsMin,
-      featureTensorsMax,
-      featureTensorsMin,
-    });
-    setStatus("finished creating model");
-    return {
-      trainingLabels,
-      testingLabels,
-      trainingFeatures,
-      testingFeatures,
-      labelTensorsMax,
-      labelTensorsMin,
-      featureTensorsMax,
-      featureTensorsMin,
-      newModel,
-    };
-  }, [selectedFeature.length, model]);
+  const prepareData = useCallback(
+    async (prevModel: tf.Sequential | null) => {
+      if (!data) return;
+      setStatus("creating points");
+      points = await getPoints(selectedFeature, data); //TODO: replace later to dynamic
+      plot([points], [selectedFeature], {
+        xLabel: selectedFeature,
+        yLabel: HOUSE_LABEL_NAME,
+        name: `${selectedFeature} vs price`,
+      });
+      setStatus("creating tensors");
+      const featureTensors = tf.tensor2d(
+        points.map((p) => p.x),
+        [points.length, 1]
+      );
+      const labelsTensors = tf.tensor2d(
+        points.map((p) => p.y),
+        [points.length, 1]
+      );
+      setStatus("normalizing tensors");
+      const {
+        tensors: normalizedFeatureTensors,
+        max: featureTensorsMax,
+        min: featureTensorsMin,
+      } = getNormalizedTensors(featureTensors);
+      const {
+        tensors: normalizedLabelTensors,
+        max: labelTensorsMax,
+        min: labelTensorsMin,
+      } = getNormalizedTensors(labelsTensors);
+      const eightyPercentOfThePoints = Math.floor(points.length * 0.8);
+      const twentyPercentOfThePoints = points.length - eightyPercentOfThePoints;
+      const arrToSplitBy = [eightyPercentOfThePoints, twentyPercentOfThePoints];
+      setStatus("splitting tensors to train and test");
+      const [trainingFeatures, testingFeatures] = tf.split(
+        normalizedFeatureTensors,
+        arrToSplitBy
+      );
+      const [trainingLabels, testingLabels] = tf.split(
+        normalizedLabelTensors,
+        arrToSplitBy
+      );
+      if (prevModel) {
+        setStatus("data created");
+        plotPredictionLine(
+          prevModel,
+          featureTensorsMax,
+          featureTensorsMin,
+          labelTensorsMin,
+          labelTensorsMax,
+          points,
+          selectedFeature,
+          {
+            xLabel: selectedFeature,
+            yLabel: HOUSE_LABEL_NAME,
+            name: `${selectedFeature} vs price`,
+          }
+        );
+        const layer = prevModel.getLayer(undefined, 0);
+        tfvis.show.layer({ name: "Layer 1" }, layer);
+        setMetaData({
+          trainingLabels,
+          testingLabels,
+          trainingFeatures,
+          testingFeatures,
+          labelTensorsMax,
+          labelTensorsMin,
+          featureTensorsMax,
+          featureTensorsMin,
+        });
+        setCurrStatus(3);
+        return null;
+      }
+      setStatus("creating model");
+      const newModel = createModel(setStatus, true);
+      setModel(newModel);
+      setCurrStatus(1);
+      setMetaData({
+        trainingLabels,
+        testingLabels,
+        trainingFeatures,
+        testingFeatures,
+        labelTensorsMax,
+        labelTensorsMin,
+        featureTensorsMax,
+        featureTensorsMin,
+      });
+      setStatus("finished creating model");
+      return {
+        trainingLabels,
+        testingLabels,
+        trainingFeatures,
+        testingFeatures,
+        labelTensorsMax,
+        labelTensorsMin,
+        featureTensorsMax,
+        featureTensorsMin,
+        newModel,
+      };
+    },
+    [selectedFeature.length, model]
+  );
 
   const predictDisabled = useMemo(() => ![2, 3].includes(currStatus), [
     currStatus,
@@ -127,7 +158,9 @@ const HousePricesAi = () => {
   };
 
   const loadModelCB = async () => {
+    if (!prevModel) return;
     setModel(prevModel);
+    prepareData(prevModel);
     setPrevModel(null);
   };
 
@@ -152,7 +185,7 @@ const HousePricesAi = () => {
   };
 
   const trainModel = useCallback(async () => {
-    const modelMetaData = await prepareData();
+    const modelMetaData = await prepareData(null);
     if (!modelMetaData || !points) return;
     const {
       trainingLabels,
@@ -196,6 +229,13 @@ const HousePricesAi = () => {
       (async () => {
         const prevModel = await loadModel(selectedFeature);
         if (prevModel) {
+          const optimizer = tf.train.adam();
+          setStatus("compiling model");
+
+          prevModel.compile({
+            optimizer,
+            loss: "meanSquaredError",
+          });
           // @ts-ignore
           setPrevModel(prevModel);
         }

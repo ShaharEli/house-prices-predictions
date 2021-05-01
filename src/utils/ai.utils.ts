@@ -206,7 +206,7 @@ export const testModelCb = (
 };
 
 export const saveModel = async (featureName: string, model: tf.Sequential) =>
-  await model.save(`localStorage://${storageID}-${featureName}`);
+  await model.save(`localstorage://${storageID}-${featureName}`);
 
 export const loadModel = async (featureName: string) => {
   const storageKey = `localstorage://${storageID}-${featureName}`;
