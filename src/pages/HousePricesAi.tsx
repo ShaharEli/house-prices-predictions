@@ -7,10 +7,11 @@ import {
   HOUSE_LABEL_NAME,
   LABELS_TO_IGNORE,
   loadData,
+  loadModel,
   modelStatusEnum,
   plot,
-  plotPredictionLine,
   predict,
+  saveModel,
   testModelCb,
   trainModelCb,
 } from "../utils";
@@ -25,6 +26,7 @@ const HousePricesAi = () => {
   const [selectedFeature, setSelectedFeature] = useState<string>("");
   const [status, setStatus] = useState<string>("");
   const [model, setModel] = useState<tf.Sequential | null>();
+  const [prevModel, setPrevModel] = useState<tf.Sequential | null>();
   const [currStatus, setCurrStatus] = useState<keyof typeof modelStatusEnum>(0);
   const [metaData, setMetaData] = useState<IMetaData | null>();
   const [predictionInput, setPredictionInput] = useState<string>("");
@@ -72,8 +74,14 @@ const HousePricesAi = () => {
       normalizedLabelTensors,
       arrToSplitBy
     );
+    if (model) {
+      setStatus("data created");
+      setCurrStatus(3);
+      return null;
+    }
     setStatus("creating model");
-    setModel(createModel(setStatus, true));
+    const newModel = createModel(setStatus, true);
+    setModel(newModel);
     setCurrStatus(1);
     setMetaData({
       trainingLabels,
@@ -86,7 +94,18 @@ const HousePricesAi = () => {
       featureTensorsMin,
     });
     setStatus("finished creating model");
-  }, [selectedFeature]);
+    return {
+      trainingLabels,
+      testingLabels,
+      trainingFeatures,
+      testingFeatures,
+      labelTensorsMax,
+      labelTensorsMin,
+      featureTensorsMax,
+      featureTensorsMin,
+      newModel,
+    };
+  }, [selectedFeature.length, model]);
 
   const predictDisabled = useMemo(() => ![2, 3].includes(currStatus), [
     currStatus,
@@ -102,33 +121,59 @@ const HousePricesAi = () => {
       metaData.labelTensorsMax,
       model
     );
-    if (!predictedValue || typeof predictedValue !== "string")
-      return setPredictedVal("");
-    setPredictedVal(predictedValue);
+    if (!predictedValue) return setPredictedVal("invalid input");
+    setPredictedVal(Number(predictedValue).toLocaleString());
+    setPredictionInput("");
   };
 
-  const testModel = () => {
+  const loadModelCB = async () => {
+    setModel(prevModel);
+    setPrevModel(null);
+  };
+
+  const testModel = async () => {
     if (!metaData || !model) return;
-    const testResult = testModelCb(
+    const testResult = await testModelCb(
       model,
       metaData.testingFeatures,
       metaData.testingLabels
     );
+
     setTestVal(testResult);
   };
 
+  const saveModelCb = async () => {
+    if (!model) return;
+    setStatus("saving");
+    setPrevModel(null);
+    await saveModel(selectedFeature, model);
+    setStatus("model saved");
+    setCurrStatus(3);
+  };
+
   const trainModel = useCallback(async () => {
-    if (!metaData || !model || !points) return;
+    const modelMetaData = await prepareData();
+    if (!modelMetaData || !points) return;
+    const {
+      trainingLabels,
+      trainingFeatures,
+      labelTensorsMax,
+      labelTensorsMin,
+      featureTensorsMax,
+      featureTensorsMin,
+      newModel,
+    } = modelMetaData;
+    if (!points) return;
     const history = await trainModelCb(
-      model,
-      metaData.trainingFeatures,
-      metaData.trainingLabels,
+      newModel,
+      trainingFeatures,
+      trainingLabels,
       { name: "loss", metrics: ["loss"], validationSplit: 0.1 },
       setStatus,
-      metaData.featureTensorsMax,
-      metaData.featureTensorsMin,
-      metaData.labelTensorsMin,
-      metaData.labelTensorsMax,
+      featureTensorsMax,
+      featureTensorsMin,
+      labelTensorsMin,
+      labelTensorsMax,
       points,
       selectedFeature,
       {
@@ -137,13 +182,24 @@ const HousePricesAi = () => {
         name: `${selectedFeature} vs price`,
       }
     );
-
-    // console.log(history);
-  }, [points, metaData]);
+    setCurrStatus(2);
+    const {
+      history: { loss: trainningLoss },
+    } = history;
+    const loss = trainningLoss[trainningLoss.length - 1];
+    if (typeof loss === "number")
+      setStatus(`Model trained with ${loss.toPrecision(6)} loss`);
+  }, [points, metaData, selectedFeature]);
 
   useEffect(() => {
     if (selectedFeature) {
-      prepareData();
+      (async () => {
+        const prevModel = await loadModel(selectedFeature);
+        if (prevModel) {
+          // @ts-ignore
+          setPrevModel(prevModel);
+        }
+      })();
     }
   }, [selectedFeature]);
 
@@ -172,7 +228,14 @@ const HousePricesAi = () => {
         <div>
           <h2>selected feature: {selectedFeature}</h2>
           <h3>status: {status}</h3>
-          <Button disabled={currStatus !== 1} onClick={trainModel}>
+          <Button
+            disabled={
+              currStatus !== 0 ||
+              status === "training" ||
+              status === "creating points"
+            }
+            onClick={trainModel}
+          >
             train model
           </Button>
           <br />
@@ -182,10 +245,23 @@ const HousePricesAi = () => {
           <br />
           {testVal && (
             <>
-              <h3>test result: {testVal}</h3>
+              <h3>test result: {Number(testVal).toPrecision(6)} loss</h3>
               <br />
             </>
           )}
+
+          <Button
+            disabled={currStatus !== 2 || status === "saving"}
+            onClick={saveModelCb}
+          >
+            save model
+          </Button>
+          <br />
+
+          <Button disabled={!prevModel} onClick={loadModelCB}>
+            load model
+          </Button>
+          <br />
           <Input
             value={predictionInput}
             onChange={({ target: { value } }) => setPredictionInput(value)}

@@ -8,3 +8,5 @@ export const modelStatusEnum = {
   2: "trained",
   3: "saved",
 };
+
+export const storageID = `kc-house-price-regression`;

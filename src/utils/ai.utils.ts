@@ -8,7 +8,7 @@ import {
   SetStatus,
 } from "../types";
 import * as tfvis from "@tensorflow/tfjs-vis";
-import { HOUSE_LABEL_NAME } from "./consts.utils";
+import { HOUSE_LABEL_NAME, storageID } from "./consts.utils";
 export const loadData = async (
   dataUrl: string
 ): Promise<tf.data.CSVDataset> => {
@@ -130,12 +130,15 @@ export const predict = (
   } else {
     return tf.tidy(() => {
       const inputTensor = tf.tensor1d([parsedInput]);
+
       const normalisedInput = getNormalizedTensors(
         inputTensor,
-        featureMin,
-        featureMax
+        featureMax,
+        featureMin
       );
       const normalisedOutputTensor = model.predict(normalisedInput.tensors);
+      // @ts-ignore
+
       const outputTensor = denormalise(
         normalisedOutputTensor,
         labelMax,
@@ -170,7 +173,6 @@ export const plotPredictionLine = (
   const predictedPoints: IPoint[] = Array.from(xs).map((val, i) => {
     return { x: val, y: ys[i] };
   });
-  console.log(predictedPoints);
 
   plot(
     [points],
@@ -200,7 +202,22 @@ export const testModelCb = (
 ) => {
   const evaluation = model.evaluate(testingFeatures, testingLabels);
   //   @ts-ignore
-  return evaluation.dataSync();
+  return evaluation.dataSync()[0];
+};
+
+export const saveModel = async (featureName: string, model: tf.Sequential) =>
+  await model.save(`localStorage://${storageID}-${featureName}`);
+
+export const loadModel = async (featureName: string) => {
+  const storageKey = `localstorage://${storageID}-${featureName}`;
+  const models = await tf.io.listModels();
+  const modelInfo = models[storageKey];
+  if (modelInfo) {
+    const prevModel = await tf.loadLayersModel(storageKey);
+    return prevModel;
+  } else {
+    return null;
+  }
 };
 
 export const trainModelCb = (
@@ -224,19 +241,15 @@ export const trainModelCb = (
   };
   setStatus("creating callbacks");
   const callbacks = tfvis.show.fitCallbacks(container, metrics);
-  console.log("featureMax", featureMax);
-  console.log("featureMin", featureMin);
-  console.log("labelMin", labelMin);
-  console.log("labelMax", labelMax);
 
   const trainingOpts = {
-    batchSize: opts.batchSize || 50,
-    epochs: opts.epochs || 50,
+    batchSize: opts.batchSize || 50, //50
+    epochs: opts.epochs || 50, //50
     validationSplit: opts.validationSplit || null,
     callbacks: {
       //   onEpochEnd: callbacks.onEpochEnd,
       //   onBatchEnd: callbacks.onBatchEnd,
-      onEpochBegin: () => {
+      onEpochEnd: () => {
         plotPredictionLine(
           model,
           featureMax,
